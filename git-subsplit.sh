@@ -20,12 +20,13 @@ n,dry-run     do everything except actually send the updates
 work-dir=     directory that contains the subsplit working directory
 
  options for 'publish'
-heads=        only publish for listed heads instead of all heads
-no-heads      do not publish any heads
-tags=         only publish for listed tags instead of all tags
-no-tags       do not publish any tags
-update        fetch updates from repository before publishing
-rebuild-tags  rebuild all tags (as opposed to skipping tags that are already synced)
+heads=              only publish for listed heads instead of all heads
+no-heads            do not publish any heads
+tags=               only publish for listed tags instead of all tags
+no-tags             do not publish any tags
+update              fetch updates from repository before publishing
+rebuild-tags        rebuild all tags (as opposed to skipping tags that are already synced)
+tree-filter=        after splitting, run 'git filter-branch --tree-filter' command with the passed options
 "
 eval "$(echo "$OPTS_SPEC" | git rev-parse --parseopt -- "$@" || echo exit $?)"
 
@@ -55,6 +56,7 @@ NO_TAGS=
 REBUILD_TAGS=
 DRY_RUN=
 VERBOSE=
+TREE_FILTER=
 
 subsplit_main()
 {
@@ -72,6 +74,7 @@ subsplit_main()
             --update) UPDATE=1 ;;
             -n) DRY_RUN="--dry-run" ;;
             --dry-run) DRY_RUN="--dry-run" ;;
+            --tree-filter) TREE_FILTER="$1"; shift ;;
             --rebuild-tags) REBUILD_TAGS=1 ;;
             --) break ;;
             *) die "Unexpected option: $opt" ;;
@@ -254,6 +257,15 @@ subsplit_publish()
                 fi
             fi
 
+            if [[ -n "$TREE_FILTER" ]]; then
+                say "filtering branch with ${TREE_FILTER}"
+                git filter-branch -f --tree-filter "${TREE_FILTER}" "$LOCAL_BRANCH"
+
+                if [ -n "$VERBOSE" ]; then
+                    echo "${DEBUG} git filter-branch -f --tree-filter \"$TREE_FILTER\" \"$LOCAL_BRANCH\""
+                fi
+            fi
+
             if [ $RETURNCODE -eq 0 ]
             then
                 PUSH_CMD="git push -q ${DRY_RUN} --force $REMOTE_NAME ${LOCAL_BRANCH}:${DST_BRANCH}"
@@ -327,6 +339,15 @@ subsplit_publish()
                     echo "${DEBUG} git subtree split -q --annotate=\"${ANNOTATE}\" --prefix=\"$SUBPATH\" --branch=\"$LOCAL_TAG\" \"$TAG\" >/dev/null"
                 else
                     echo "${DEBUG} git checkout -b \"${LOCAL_TAG}\" \"$TAG\" >/dev/null"
+                fi
+            fi
+
+            if [[ -n "$TREE_FILTER" ]]; then
+                say "filtering tag with ${TREE_FILTER}"
+                git filter-branch -f --tree-filter "${TREE_FILTER}" "$LOCAL_TAG"
+
+                if [ -n "$VERBOSE" ]; then
+                    echo "${DEBUG} git filter-branch -f --tree-filter \"$TREE_FILTER\" \"$LOCAL_TAG\""
                 fi
             fi
 
