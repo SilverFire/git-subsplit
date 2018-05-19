@@ -17,7 +17,7 @@ h,help        show the help
 q             quiet
 debug         show plenty of debug output
 n,dry-run     do everything except actually send the updates
-work-dir      directory that contains the subsplit working directory
+work-dir=     directory that contains the subsplit working directory
 
  options for 'publish'
 heads=        only publish for listed heads instead of all heads
@@ -64,6 +64,7 @@ subsplit_main()
         case "$opt" in
             -q) QUIET=1 ;;
             --debug) VERBOSE=1 ;;
+            --work-dir) WORK_DIR="$1"; shift ;;
             --heads) HEADS="$1"; shift ;;
             --no-heads) NO_HEADS=1 ;;
             --tags) TAGS="$1"; shift ;;
@@ -202,40 +203,60 @@ subsplit_publish()
             then
                 echo "${DEBUG} git show-ref --quiet --verify -- \"refs/remotes/origin/${HEAD}\""
             fi
+            SRC_BRANCH="$HEAD"
+            DST_BRANCH="$HEAD"
+            if [[ "$HEAD" =~ ":" ]]; then
+                BRANCH_MAP=(${HEAD//:/ })
+                SRC_BRANCH=${BRANCH_MAP[0]}
+                DST_BRANCH=${BRANCH_MAP[1]}
+                say " - local branch '${SRC_BRANCH}' will be mapped to remote branch '${DST_BRANCH}'"
+            fi
 
-            if ! git show-ref --quiet --verify -- "refs/remotes/origin/${HEAD}"
+            if ! git show-ref --quiet --verify -- "refs/remotes/origin/${SRC_BRANCH}"
             then
-                say " - skipping head '${HEAD}' (does not exist)"
+                say " - skipping branch '${SRC_BRANCH}' (does not exist)"
                 continue
             fi
-            LOCAL_BRANCH="${REMOTE_NAME}-branch-${HEAD}"
+            LOCAL_BRANCH="${REMOTE_NAME}-branch-${SRC_BRANCH}"
 
             if [ -n "$VERBOSE" ];
             then
+                echo "${DEBUG} SRC_BRANCH=\"${SRC_BRANCH}\""
+                echo "${DEBUG} DST_BRANCH=\"${DST_BRANCH}\""
                 echo "${DEBUG} LOCAL_BRANCH=\"${LOCAL_BRANCH}\""
+                echo "${DEBUG} SUBPATH=\"${SUBPATH}\""
             fi
 
-            say " - syncing branch '${HEAD}'"
+            say " - syncing branch '${SRC_BRANCH}'"
 
-            git checkout master >/dev/null 2>&1
+            git checkout "$SRC_BRANCH" >/dev/null 2>&1
             git branch -D "$LOCAL_BRANCH" >/dev/null 2>&1
             git branch -D "${LOCAL_BRANCH}-checkout" >/dev/null 2>&1
-            git checkout -b "${LOCAL_BRANCH}-checkout" "origin/${HEAD}" >/dev/null 2>&1
-            git subtree split -q --prefix="$SUBPATH" --branch="$LOCAL_BRANCH" "origin/${HEAD}" >/dev/null
+            git checkout -b "${LOCAL_BRANCH}-checkout" "origin/${SRC_BRANCH}" >/dev/null 2>&1
+            if [[ "$SUBPATH" != '/' ]]; then
+                git subtree split -q --prefix="$SUBPATH" --branch="$LOCAL_BRANCH" "origin/${SRC_BRANCH}" >/dev/null
+            else
+                # Nothing to filter, just make a copy of branch
+                git checkout -b "$LOCAL_BRANCH" "origin/${SRC_BRANCH}" >/dev/null
+            fi
             RETURNCODE=$?
 
             if [ -n "$VERBOSE" ];
             then
-                echo "${DEBUG} git checkout master >/dev/null 2>&1"
+                echo "${DEBUG} git checkout "$SRC_BRANCH" >/dev/null 2>&1"
                 echo "${DEBUG} git branch -D \"$LOCAL_BRANCH\" >/dev/null 2>&1"
                 echo "${DEBUG} git branch -D \"${LOCAL_BRANCH}-checkout\" >/dev/null 2>&1"
-                echo "${DEBUG} git checkout -b \"${LOCAL_BRANCH}-checkout\" \"origin/${HEAD}\" >/dev/null 2>&1"
-                echo "${DEBUG} git subtree split -q --prefix=\"$SUBPATH\" --branch=\"$LOCAL_BRANCH\" \"origin/${HEAD}\" >/dev/null"
+                echo "${DEBUG} git checkout -b \"${LOCAL_BRANCH}-checkout\" \"origin/${SRC_BRANCH}\" >/dev/null 2>&1"
+                if [[ "$SUBPATH" != '/' ]]; then
+                    echo "${DEBUG} git subtree split -q --prefix=\"$SUBPATH\" --branch=\"$LOCAL_BRANCH\" \"origin/${SRC_BRANCH}\" >/dev/null"
+                else
+                    echo "${DEBUG} git checkout -b \"$LOCAL_BRANCH\" \"origin/${SRC_BRANCH}\" >/dev/null"
+                fi
             fi
 
             if [ $RETURNCODE -eq 0 ]
             then
-                PUSH_CMD="git push -q ${DRY_RUN} --force $REMOTE_NAME ${LOCAL_BRANCH}:${HEAD}"
+                PUSH_CMD="git push -q ${DRY_RUN} --force $REMOTE_NAME ${LOCAL_BRANCH}:${DST_BRANCH}"
 
                 if [ -n "$VERBOSE" ];
                 then
@@ -292,12 +313,21 @@ subsplit_publish()
             fi
 
             say " - subtree split for '${TAG}'"
-            git subtree split -q --annotate="${ANNOTATE}" --prefix="$SUBPATH" --branch="$LOCAL_TAG" "$TAG" >/dev/null
+            if [[ "$SUBPATH" != '/' ]]; then
+                git subtree split -q --annotate="${ANNOTATE}" --prefix="$SUBPATH" --branch="$LOCAL_TAG" "$TAG" >/dev/null
+            else
+                # Nothing to filter, just make a copy of branch
+                git checkout -b "$LOCAL_TAG" "$TAG" >/dev/null
+            fi
             RETURNCODE=$?
 
             if [ -n "$VERBOSE" ];
             then
-                echo "${DEBUG} git subtree split -q --annotate=\"${ANNOTATE}\" --prefix=\"$SUBPATH\" --branch=\"$LOCAL_TAG\" \"$TAG\" >/dev/null"
+                if [[ "$SUBPATH" != '/' ]]; then
+                    echo "${DEBUG} git subtree split -q --annotate=\"${ANNOTATE}\" --prefix=\"$SUBPATH\" --branch=\"$LOCAL_TAG\" \"$TAG\" >/dev/null"
+                else
+                    echo "${DEBUG} git checkout -b \"${LOCAL_TAG}\" \"$TAG\" >/dev/null"
+                fi
             fi
 
             say " - subtree split for '${TAG}' [DONE]"
