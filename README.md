@@ -1,3 +1,16 @@
+What was changed in this fork
+-----------
+
+This fork adds the following features:
+
+- Changing working directory (defaults to `.subsplit`) using `--work-dir='.anoter-subsplit'` option
+- Possibility to rename branch during splitting. For example `--heads='feature:master'` means to
+take code from `feature` branch in source repo and put it in `master` branch of split repo.
+- Possibility to copy branch without actual subtree splitting. Set `<splits>` parameter with `/` to the
+left to publish whole branch without any changes. E.g. `git subsplit publish "/:git@github.com/foo/bar.git"`.
+Might be useful with aforementiond branch renaming feature.
+- Possibility to run custom tree filter after splitting. For example: `--tree-filter='rm secrets.json'`
+
 Git Subsplit
 ============
 
